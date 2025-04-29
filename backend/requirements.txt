@@ -1,0 +1,5 @@
+django-rest-framework
+django-storages
+django-channels
+django-cors-headers
+pillow
