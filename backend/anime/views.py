@@ -1,14 +1,71 @@
-import json
-import os
 
 from django.db.models.functions import Lower, Substr
-from django.http import JsonResponse
 from rest_framework import generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from core.permissions import IsOwnerOrReadOnly
 
 from .models import Genre, Anime, AnimeQuotes
 from .serializers import GenreSerializer, AnimeSerializer, QuoteSerializer
+
+import json
+import os
+from django.http import JsonResponse
+from .models import Anime, AnimeListGenres
+
+
+def import_anime_data(request):
+    """Import anime data from JSON file to the database"""
+    file_path = os.path.join(os.path.dirname(__file__), '../static', 'anime.json')
+
+    try:
+        with open(file_path, 'r') as file:
+            anime_data = json.load(file)
+
+        imported_count = 0
+        skipped_count = 0
+
+        for item in anime_data:
+            # Check if anime already exists by MAL ID or title
+            if item.get('mal_id') and Anime.objects.filter(mal_id=item.get('mal_id')).exists():
+                skipped_count += 1
+                continue
+
+            # Create new anime record
+            anime = Anime(
+                title=item.get('title'),
+                score=item.get('score'),
+                episodes=item.get('episodes'),
+                year=item.get('year'),
+                image_url=item.get('image_url'),
+                synopsis=item.get('synopsis'),
+                trailer_url=item.get('trailer_url'),
+                mal_id=item.get('mal_id')
+            )
+            anime.save()
+
+            # Process genres (assuming they're in a list)
+            if 'genres' in item and isinstance(item['genres'], list):
+                for genre_name in item['genres']:
+                    # Get or create genre
+                    genre, created = AnimeListGenres.objects.get_or_create(name=genre_name)
+                    # Add genre to anime
+                    anime.genres.add(genre)
+
+            imported_count += 1
+
+        return JsonResponse({
+            'status': 'success',
+            'imported': imported_count,
+            'skipped': skipped_count,
+            'message': f'Successfully imported {imported_count} anime entries to database'
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
 
 
 class GenreList(generics.ListCreateAPIView):
